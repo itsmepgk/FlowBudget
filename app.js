@@ -315,15 +315,24 @@ async function loadGroupMembers(groupId) {
   if (!members) return;
 
   const uuids = members.map(m => m.user_uuid);
-  const { data: users } = await sb.from('users').select('id, name').in('id', uuids);
-  const nameMap = Object.fromEntries((users || []).map(u => [u.id, u.name]));
+  const { data: users } = await sb.from('users').select('id, name, name_changed').in('id', uuids);
+  const userMap = Object.fromEntries((users || []).map(u => [u.id, u]));
+
+  // Re-sync current user's name + nameChanged flag from DB on every group open.
+  // This ensures renames from other devices/sessions are reflected immediately.
+  const selfData = userMap[currentUser?.id];
+  if (selfData) {
+    currentUser.name        = displayName(selfData.name, currentUser.email);
+    currentUser.nameChanged = selfData.name_changed || false;
+    document.getElementById('userAvatarBtn').textContent     = (currentUser.name || '?')[0].toUpperCase();
+    document.getElementById('userMenuName').textContent      = currentUser.name;
+    document.getElementById('editNameMenuBtn').style.display = currentUser.nameChanged ? 'none' : 'block';
+  }
 
   groupMembers = members.map(m => ({
     user_uuid:  m.user_uuid,
     user_email: m.user_email,
-    name: m.user_uuid === currentUser?.id
-      ? currentUser.name
-      : displayName(nameMap[m.user_uuid], m.user_email)
+    name: displayName(userMap[m.user_uuid]?.name, m.user_email)
   }));
 
   document.getElementById('membersList').innerHTML = groupMembers.map(m => `
