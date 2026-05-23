@@ -298,6 +298,7 @@ function goBack() {
   groupMembers = [];
   document.getElementById('groupDetail').style.display = 'none';
   document.getElementById('mainView').style.display = 'block';
+  loadGroups();
 }
 
 function copyInviteCode() {
