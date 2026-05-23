@@ -103,3 +103,36 @@ create policy "expense delete" on expenses for delete using (auth.uid() = paid_b
 
 -- MIGRATION v3 (safe to re-run)
 alter table groups add column if not exists currency text default 'USD';
+
+-- MIGRATION v4 (safe to re-run)
+alter table users add column if not exists name_changed boolean not null default false;
+
+-- MIGRATION v5 (safe to re-run)
+-- Audit log for group activity
+create table if not exists group_events (
+  id         bigint generated always as identity primary key,
+  group_id   bigint references groups(id) on delete cascade,
+  user_uuid  uuid not null,
+  event_type text not null,  -- expense_added | expense_updated | expense_deleted | settled
+  summary    text not null,
+  created_at timestamp default now()
+);
+alter table group_events enable row level security;
+drop policy if exists "event select" on group_events;
+drop policy if exists "event insert" on group_events;
+create policy "event select" on group_events for select using (true);
+create policy "event insert" on group_events for insert with check (auth.uid() = user_uuid);
+
+-- Allow expense owner to update their expenses
+drop policy if exists "expense update" on expenses;
+create policy "expense update" on expenses for update using (auth.uid() = paid_by);
+
+-- Allow expense owner to delete splits when editing
+drop policy if exists "split delete" on expense_splits;
+create policy "split delete" on expense_splits for delete using (
+  exists (
+    select 1 from expenses
+    where expenses.id = expense_splits.expense_id
+      and expenses.paid_by = auth.uid()
+  )
+);

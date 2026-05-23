@@ -27,6 +27,8 @@ async function signup() {
 
   if (!nameVal)  { status.textContent = 'Please enter your name';  return; }
   if (!emailVal) { status.textContent = 'Please enter your email'; return; }
+  if (nameVal.includes('@'))  { status.textContent = 'Please use your real name, not an email address'; return; }
+  if (nameVal.length > 30)    { status.textContent = 'Name must be 30 characters or less'; return; }
 
   const { error, data } = await sb.auth.signUp({ email: emailVal, password: passVal });
   if (error) { status.textContent = error.message; return; }
@@ -55,6 +57,26 @@ async function logout() {
   location.reload();
 }
 
+function promptNameChange() {
+  const newName = prompt('Enter your new display name (max 30 characters).\nWarning: this can only be done once.');
+  if (newName === null) return;
+  const trimmed = newName.trim();
+  if (!trimmed)               { alert('Name cannot be empty'); return; }
+  if (trimmed.length > 30)    { alert('Name must be 30 characters or less'); return; }
+  if (trimmed.includes('@'))  { alert('Please use your real name, not an email address'); return; }
+  if (!confirm(`Change your name to "${trimmed}"?\n\nThis cannot be changed again.`)) return;
+  changeName(trimmed);
+}
+
+async function changeName(name) {
+  const { error } = await sb.from('users').update({ name, name_changed: true }).eq('id', currentUser.id);
+  if (error) { alert(error.message); return; }
+  currentUser.name = name;
+  currentUser.nameChanged = true;
+  document.getElementById('userNameDisplay').textContent = name;
+  document.getElementById('editNameBtn').style.display = 'none';
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 async function init() {
@@ -67,11 +89,13 @@ async function init() {
   const guestBanner     = document.getElementById('guestBanner');
 
   if (user) {
-    const { data } = await sb.from('users').select('name').eq('id', user.id).single();
+    const { data } = await sb.from('users').select('name, name_changed').eq('id', user.id).single();
     currentUser.name = data?.name || user.email;
+    currentUser.nameChanged = data?.name_changed || false;
     authBtn.style.display = 'none';
     userInfoEl.style.display = 'flex';
     document.getElementById('userNameDisplay').textContent = currentUser.name;
+    document.getElementById('editNameBtn').style.display = currentUser.nameChanged ? 'none' : 'inline-flex';
     loggedInSection.style.display = 'block';
     guestBanner.style.display = 'none';
     await loadGroups();
@@ -207,7 +231,9 @@ async function leaveGroup() {
   await loadGroups();
 }
 
-let realtimeChannel = null;
+let realtimeChannel  = null;
+let editingExpenseId = null;
+let simplifyEnabled  = true;
 
 function subscribeToGroup(groupId) {
   unsubscribeFromGroup();
@@ -220,6 +246,9 @@ function subscribeToGroup(groupId) {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'settlements', filter: `group_id=eq.${groupId}` }, () => {
       Promise.all([loadBalances(groupId), loadActivity(groupId)]);
       loadGroups();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'group_members', filter: `group_id=eq.${groupId}` }, () => {
+      loadGroupMembers(groupId);
     })
     .subscribe();
 }
@@ -271,43 +300,144 @@ async function loadGroupMembers(groupId) {
 
 // ─── Expenses ─────────────────────────────────────────────────────────────────
 
-function openExpenseModal() {
-  if (!currentUser) { alert('Login first'); return; }
-  document.getElementById('paidBy').innerHTML = groupMembers.map(m =>
-    `<option value="${m.user_uuid}" ${m.user_uuid === currentUser.id ? 'selected' : ''}>${esc(m.name)}</option>`
-  ).join('');
-  document.getElementById('expenseDesc').value = '';
-  document.getElementById('expenseAmount').value = '';
-  document.getElementById('expenseCategory').value = 'other';
+async function logEvent(summary, eventType) {
+  await sb.from('group_events').insert([{ group_id: currentGroup.id, user_uuid: currentUser.id, event_type: eventType, summary }]);
+}
+
+function populateSplitMembers() {
   document.getElementById('splitWith').innerHTML = groupMembers.map(m =>
     `<label class="split-member"><input type="checkbox" value="${m.user_uuid}" checked> ${esc(m.name)}</label>`
   ).join('');
+  document.getElementById('splitCustomInputs').innerHTML = groupMembers.map(m =>
+    `<label class="split-input-row"><span>${esc(m.name)}</span><input type="number" step="0.01" min="0" data-uuid="${m.user_uuid}" placeholder="0.00" oninput="updateSplitAmounts()"></label>`
+  ).join('');
+  document.getElementById('splitRatioInputs').innerHTML = groupMembers.map(m =>
+    `<label class="split-input-row"><span>${esc(m.name)}</span><input type="number" step="0.1" min="0" data-uuid="${m.user_uuid}" value="1"></label>`
+  ).join('');
+}
+
+function updateSplitUI() {
+  const t = document.getElementById('splitType').value;
+  document.getElementById('splitEqual').style.display  = t === 'equal'  ? 'block' : 'none';
+  document.getElementById('splitCustom').style.display = t === 'custom' ? 'block' : 'none';
+  document.getElementById('splitRatio').style.display  = t === 'ratio'  ? 'block' : 'none';
+  updateSplitAmounts();
+}
+
+function updateSplitAmounts() {
+  if (document.getElementById('splitType').value !== 'custom') return;
+  const amount = parseFloat(document.getElementById('expenseAmount').value) || 0;
+  const total  = [...document.querySelectorAll('#splitCustomInputs input')].reduce((s, el) => s + (parseFloat(el.value) || 0), 0);
+  const rem    = amount - total;
+  const el     = document.getElementById('splitCustomRemaining');
+  el.textContent = Math.abs(rem) < 0.005 ? '✅ Balanced' : rem > 0 ? `${sym()}${rem.toFixed(2)} remaining` : `Over by ${sym()}${Math.abs(rem).toFixed(2)}`;
+  el.className   = 'split-remaining ' + (Math.abs(rem) < 0.005 ? 'balanced' : 'unbalanced');
+}
+
+function openExpenseModal(expenseId = null) {
+  if (!currentUser) { alert('Login first'); return; }
+  editingExpenseId = expenseId;
+  document.getElementById('expenseModalTitle').textContent   = expenseId ? 'Edit Expense'   : 'Add Expense';
+  document.getElementById('expenseSubmitBtn').textContent    = expenseId ? 'Save Changes'   : 'Add Expense';
+  document.getElementById('paidBy').innerHTML = groupMembers.map(m =>
+    `<option value="${m.user_uuid}" ${m.user_uuid === currentUser.id ? 'selected' : ''}>${esc(m.name)}</option>`
+  ).join('');
+  document.getElementById('splitType').value = 'equal';
+  updateSplitUI();
+  if (!expenseId) {
+    document.getElementById('expenseDesc').value    = '';
+    document.getElementById('expenseAmount').value  = '';
+    document.getElementById('expenseCategory').value = 'other';
+    populateSplitMembers();
+  }
   document.getElementById('expenseModal').style.display = 'flex';
+}
+
+async function openEditExpense(id) {
+  const [{ data: exp }, { data: splits }] = await Promise.all([
+    sb.from('expenses').select('*').eq('id', id).single(),
+    sb.from('expense_splits').select('*').eq('expense_id', id)
+  ]);
+  openExpenseModal(id);
+  document.getElementById('expenseDesc').value     = exp.description;
+  document.getElementById('expenseAmount').value   = exp.amount;
+  document.getElementById('expenseCategory').value = exp.category || 'other';
+  document.getElementById('paidBy').value          = exp.paid_by;
+  populateSplitMembers();
+  if (splits?.length) {
+    const splitMap  = Object.fromEntries(splits.map(s => [s.user_uuid, parseFloat(s.amount)]));
+    const splitUuids = new Set(splits.map(s => s.user_uuid));
+    const amounts    = splits.map(s => parseFloat(s.amount));
+    const allEqual   = amounts.every(a => Math.abs(a - amounts[0]) < 0.01);
+    if (allEqual) {
+      document.querySelectorAll('#splitWith input').forEach(cb => { cb.checked = splitUuids.has(cb.value); });
+    } else {
+      document.getElementById('splitType').value = 'custom';
+      updateSplitUI();
+      document.querySelectorAll('#splitCustomInputs input').forEach(inp => {
+        if (splitMap[inp.dataset.uuid]) inp.value = splitMap[inp.dataset.uuid].toFixed(2);
+      });
+      updateSplitAmounts();
+    }
+  }
 }
 
 function closeExpenseModal() {
   document.getElementById('expenseModal').style.display = 'none';
+  editingExpenseId = null;
 }
 
-async function addExpense() {
-  const desc   = document.getElementById('expenseDesc').value.trim();
-  const amount = parseFloat(document.getElementById('expenseAmount').value);
-  const paidBy = document.getElementById('paidBy').value;
+async function submitExpense() {
+  const desc      = document.getElementById('expenseDesc').value.trim();
+  const amount    = parseFloat(document.getElementById('expenseAmount').value);
+  const paidBy    = document.getElementById('paidBy').value;
+  const category  = document.getElementById('expenseCategory').value;
+  const splitType = document.getElementById('splitType').value;
 
   if (!desc || isNaN(amount) || amount <= 0) { alert('Please fill in all fields'); return; }
 
-  const category = document.getElementById('expenseCategory').value;
-  const { data: expense, error } = await sb.from('expenses')
-    .insert([{ group_id: currentGroup.id, description: desc, amount, paid_by: paidBy, category }])
-    .select();
-  if (error) { alert(error.message); return; }
+  // Build splits
+  let splits = [];
+  if (splitType === 'equal') {
+    const uuids = [...document.querySelectorAll('#splitWith input:checked')].map(el => el.value);
+    if (!uuids.length) { alert('Select at least one person to split with'); return; }
+    const share = parseFloat((amount / uuids.length).toFixed(2));
+    splits = uuids.map(uuid => ({ user_uuid: uuid, amount: share }));
+  } else if (splitType === 'custom') {
+    splits = [...document.querySelectorAll('#splitCustomInputs input')]
+      .map(el => ({ user_uuid: el.dataset.uuid, amount: parseFloat(el.value) || 0 }))
+      .filter(s => s.amount > 0);
+    const total = splits.reduce((s, c) => s + c.amount, 0);
+    if (!splits.length) { alert('Enter at least one amount'); return; }
+    if (Math.abs(total - amount) > 0.01) {
+      alert(`Split amounts (${sym()}${total.toFixed(2)}) must equal the total (${sym()}${amount.toFixed(2)})`);
+      return;
+    }
+  } else {
+    const rows = [...document.querySelectorAll('#splitRatioInputs input')]
+      .map(el => ({ uuid: el.dataset.uuid, ratio: parseFloat(el.value) || 0 }))
+      .filter(r => r.ratio > 0);
+    if (!rows.length) { alert('Enter at least one ratio value'); return; }
+    const total = rows.reduce((s, r) => s + r.ratio, 0);
+    splits = rows.map(r => ({ user_uuid: r.uuid, amount: parseFloat((amount * r.ratio / total).toFixed(2)) }));
+  }
 
-  const splitWith = [...document.querySelectorAll('#splitWith input:checked')].map(el => el.value);
-  if (!splitWith.length) { alert('Select at least one person to split with'); return; }
-  const share = parseFloat((amount / splitWith.length).toFixed(2));
-  await sb.from('expense_splits').insert(
-    splitWith.map(uuid => ({ expense_id: expense[0].id, user_uuid: uuid, amount: share }))
-  );
+  if (editingExpenseId) {
+    const { error } = await sb.from('expenses')
+      .update({ description: desc, amount, category, paid_by: paidBy })
+      .eq('id', editingExpenseId);
+    if (error) { alert(error.message); return; }
+    await sb.from('expense_splits').delete().eq('expense_id', editingExpenseId);
+    await sb.from('expense_splits').insert(splits.map(s => ({ expense_id: editingExpenseId, ...s })));
+    await logEvent(`Updated "${desc}" · ${sym()}${amount.toFixed(2)}`, 'expense_updated');
+  } else {
+    const { data: expense, error } = await sb.from('expenses')
+      .insert([{ group_id: currentGroup.id, description: desc, amount, paid_by: paidBy, category }])
+      .select();
+    if (error) { alert(error.message); return; }
+    await sb.from('expense_splits').insert(splits.map(s => ({ expense_id: expense[0].id, ...s })));
+    await logEvent(`Added "${desc}" · ${sym()}${amount.toFixed(2)}`, 'expense_added');
+  }
 
   closeExpenseModal();
   await loadGroupExpenses(currentGroup.id);
@@ -327,7 +457,7 @@ async function loadGroupExpenses(groupId) {
   const nameMap = Object.fromEntries(groupMembers.map(m => [m.user_uuid, m.name]));
   el.innerHTML = expenses.map(e => {
     const icon = CATEGORIES[e.category] || '🧾';
-    const canDelete = e.paid_by === currentUser?.id;
+    const canEdit = e.paid_by === currentUser?.id;
     return `
     <div class="expense-item">
       <div class="expense-icon">${icon}</div>
@@ -337,18 +467,20 @@ async function loadGroupExpenses(groupId) {
       </div>
       <div class="expense-right">
         <div class="expense-amount">${sym()}${parseFloat(e.amount).toFixed(2)}</div>
-        ${canDelete ? `<button class="delete-btn" onclick="deleteExpense(${e.id})">🗑</button>` : ''}
+        ${canEdit ? `<button class="edit-btn" onclick="openEditExpense(${e.id})">✏️</button>` : ''}
+        ${canEdit ? `<button class="delete-btn" onclick="deleteExpense(${e.id}, ${JSON.stringify(e.description)})">🗑</button>` : ''}
       </div>
     </div>`;
   }).join('');
 }
 
-async function deleteExpense(id) {
+async function deleteExpense(id, desc) {
   if (!confirm('Delete this expense? Splits will also be removed.')) return;
+  await logEvent(`Deleted "${desc}"`, 'expense_deleted');
   const { error } = await sb.from('expenses').delete().eq('id', id);
   if (error) { alert(error.message); return; }
   await loadGroupExpenses(currentGroup.id);
-  await loadBalances(currentGroup.id);
+  await Promise.all([loadBalances(currentGroup.id), loadActivity(currentGroup.id)]);
 }
 
 // ─── Balances ─────────────────────────────────────────────────────────────────
@@ -378,8 +510,24 @@ async function loadBalances(groupId) {
   });
 
   const nameMap = Object.fromEntries(groupMembers.map(m => [m.user_uuid, m.name]));
-  const debts   = simplifyDebts(net, nameMap);
   const el      = document.getElementById('balancesList');
+
+  if (!simplifyEnabled) {
+    const rows = Object.entries(net).filter(([, v]) => Math.abs(v) > 0.005);
+    if (!rows.length) { el.innerHTML = '<p class="empty-msg">✅ All settled up!</p>'; return; }
+    el.innerHTML = rows.map(([uuid, val]) => {
+      const name  = nameMap[uuid] || uuid;
+      const isMe  = uuid === currentUser?.id;
+      const color = val > 0 ? '#34d399' : '#f87171';
+      const label = val > 0 ? `is owed ${sym()}${val.toFixed(2)}` : `owes ${sym()}${Math.abs(val).toFixed(2)}`;
+      return `<div class="balance-item ${isMe ? 'balance-highlight' : ''}">
+        <div class="balance-text"><strong>${esc(name)}</strong> ${label}</div>
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  const debts   = simplifyDebts(net, nameMap);
 
   if (!debts.length) {
     el.innerHTML = '<p class="empty-msg">✅ All settled up!</p>';
@@ -447,18 +595,27 @@ function closeSettleModal() {
   settleTarget = null;
 }
 
+function toggleSimplify() {
+  simplifyEnabled = !simplifyEnabled;
+  const btn = document.getElementById('simplifyToggle');
+  btn.textContent = simplifyEnabled ? 'Simplified ✓' : 'Show simplified';
+  btn.classList.toggle('active', simplifyEnabled);
+  loadBalances(currentGroup.id);
+}
+
 async function confirmSettle() {
   if (!settleTarget) return;
   const amount = parseFloat(document.getElementById('settleAmount').value);
   if (isNaN(amount) || amount <= 0) { alert('Enter a valid amount'); return; }
 
   const { error } = await sb.from('settlements').insert([{
-    group_id:     currentGroup.id,
-    payer_uuid:   currentUser.id,
+    group_id:      currentGroup.id,
+    payer_uuid:    currentUser.id,
     receiver_uuid: settleTarget.toUuid,
     amount
   }]);
   if (error) { alert(error.message); return; }
+  await logEvent(`Settled ${sym()}${amount.toFixed(2)} with ${settleTarget.toName}`, 'settled');
 
   closeSettleModal();
   await Promise.all([loadBalances(currentGroup.id), loadActivity(currentGroup.id)]);
@@ -467,44 +624,24 @@ async function confirmSettle() {
 // ─── Activity Feed ───────────────────────────────────────────────────────────
 
 async function loadActivity(groupId) {
-  const [{ data: expenses }, { data: settlements }] = await Promise.all([
-    sb.from('expenses').select('id, description, amount, paid_by, category, created_at')
-      .eq('group_id', groupId).order('created_at', { ascending: false }).limit(20),
-    sb.from('settlements').select('payer_uuid, receiver_uuid, amount, created_at')
-      .eq('group_id', groupId).order('created_at', { ascending: false }).limit(20)
-  ]);
-
-  const nameMap = Object.fromEntries(groupMembers.map(m => [m.user_uuid, m.name]));
-  const events = [
-    ...(expenses || []).map(e => ({ type: 'expense', date: new Date(e.created_at), data: e })),
-    ...(settlements || []).map(s => ({ type: 'settle', date: new Date(s.created_at), data: s }))
-  ].sort((a, b) => b.date - a.date).slice(0, 15);
+  const { data: events } = await sb.from('group_events')
+    .select('*').eq('group_id', groupId)
+    .order('created_at', { ascending: false }).limit(30);
 
   const el = document.getElementById('activityFeed');
-  if (!events.length) { el.innerHTML = '<p class="empty-msg">No activity yet.</p>'; return; }
+  if (!events?.length) { el.innerHTML = '<p class="empty-msg">No activity yet.</p>'; return; }
 
-  el.innerHTML = events.map(ev => {
-    if (ev.type === 'expense') {
-      const e = ev.data;
-      return `
-        <div class="activity-item">
-          <div class="activity-icon">${CATEGORIES[e.category] || '\u{1F9FE}'}</div>
-          <div class="activity-info">
-            <div class="activity-title">${esc(e.description)}</div>
-            <div class="activity-meta">${esc(nameMap[e.paid_by] || 'Someone')} paid ${sym()}${parseFloat(e.amount).toFixed(2)} · ${ev.date.toLocaleDateString()}</div>
-          </div>
-        </div>`;
-    }
-    const s = ev.data;
-    return `
-      <div class="activity-item settle-event">
-        <div class="activity-icon">✅</div>
-        <div class="activity-info">
-          <div class="activity-title">${esc(nameMap[s.payer_uuid] || 'Someone')} settled up with ${esc(nameMap[s.receiver_uuid] || 'Someone')}</div>
-          <div class="activity-meta">${sym()}${parseFloat(s.amount).toFixed(2)} · ${ev.date.toLocaleDateString()}</div>
-        </div>
-      </div>`;
-  }).join('');
+  const nameMap = Object.fromEntries(groupMembers.map(m => [m.user_uuid, m.name]));
+  const icons   = { expense_added: '➕', expense_updated: '✏️', expense_deleted: '🗑️', settled: '✅' };
+
+  el.innerHTML = events.map(ev => `
+    <div class="activity-item">
+      <div class="activity-icon">${icons[ev.event_type] || '📋'}</div>
+      <div class="activity-info">
+        <div class="activity-title">${esc(ev.summary)}</div>
+        <div class="activity-meta">${esc(nameMap[ev.user_uuid] || 'Someone')} · ${new Date(ev.created_at).toLocaleDateString()}</div>
+      </div>
+    </div>`).join('');
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
