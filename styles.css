@@ -1,0 +1,45 @@
+body {
+ font-family: Arial;
+ background: #111827;
+ color: white;
+ padding: 20px;
+}
+
+.card {
+ background: #1f2937;
+ padding: 16px;
+ border-radius: 12px;
+ margin-bottom: 16px;
+}
+
+input,
+button {
+ width: 100%;
+ padding: 10px;
+ margin-top: 8px;
+ border: none;
+ border-radius: 8px;
+ box-sizing: border-box;
+}
+
+input {
+ background: #374151;
+ color: white;
+}
+
+button {
+ background: #2563eb;
+ color: white;
+ cursor: pointer;
+}
+
+button:hover {
+ background: #1d4ed8;
+}
+
+.item {
+ background: #374151;
+ padding: 12px;
+ border-radius: 10px;
+ margin-top: 10px;
+}

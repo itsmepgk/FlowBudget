@@ -2,21 +2,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SimpliDivide Secure</title>
-
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./config.js"></script>
-
-<style>
-body{font-family:Arial;background:#111827;color:white;padding:20px}
-.card{background:#1f2937;padding:16px;border-radius:12px;margin-bottom:16px}
-input,button{width:100%;padding:10px;margin-top:8px;border:none;border-radius:8px;box-sizing:border-box}
-input{background:#374151;color:white}
-button{background:#2563eb;color:white}
-.item{background:#374151;padding:12px;border-radius:10px;margin-top:10px}
-</style>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width,initial-scale=1">
+ <title>SimpliDivide Secure</title>
+ <link rel="stylesheet" href="./styles.css">
+ <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+ <script src="./config.js"></script>
 </head>
 <body>
 
@@ -49,144 +40,6 @@ button{background:#2563eb;color:white}
 <div id="groups"></div>
 </div>
 
-<script>
-
-const sb = window.supabase.createClient(
- CONFIG.SUPABASE_URL,
- CONFIG.SUPABASE_ANON_KEY
-);
-
-function code(){
- return Math.random().toString(36).substring(2,8).toUpperCase();
-}
-
-async function signup(){
-
- await sb.auth.signUp({
-  email:email.value,
-  password:password.value
- });
-
- alert("Signup complete");
-}
-
-async function login(){
-
- console.log("Login clicked, email:", email.value);
-
- const {error, data}=await sb.auth.signInWithPassword({
-  email:email.value,
-  password:password.value
- });
-
- console.log("Auth response:", {error, data});
-
- if(error) {
-  console.error("Login failed:", error.message);
-  alert(error.message);
- } else {
-  console.log("Login successful!");
- }
-
- load();
-}
-
-async function logout(){
- await sb.auth.signOut();
- location.reload();
-}
-
-async function createGroup(){
-
- const user=(await sb.auth.getUser()).data.user;
-
- if(!user){
-  alert("Login first");
-  return;
- }
-
- const res=await sb.from("groups")
- .insert([{
-  name:groupName.value,
-  invite_code:code(),
-  owner_uuid:user.id
- }])
- .select();
-
- const group=res.data[0];
-
- await sb.from("group_members")
- .insert([{
-  group_id:group.id,
-  user_uuid:user.id,
-  user_email:user.email
- }]);
-
- alert("Invite code: "+group.invite_code);
-
- load();
-}
-
-async function joinGroup(){
-
- const user=(await sb.auth.getUser()).data.user;
-
- const res=await sb.from("groups")
- .select("*")
- .eq("invite_code",inviteCode.value)
- .single();
-
- if(!res.data){
-  alert("Invalid code");
-  return;
- }
-
- await sb.from("group_members")
- .insert([{
-  group_id:res.data.id,
-  user_uuid:user.id,
-  user_email:user.email
- }]);
-
- load();
-}
-
-async function load(){
-
- const user=(await sb.auth.getUser()).data.user;
-
- status.innerText=user ? "Logged in: "+user.email : "Not logged in";
-
- if(!user)return;
-
- const m=await sb.from("group_members")
- .select("*")
- .eq("user_uuid",user.id);
-
- const ids=m.data.map(x=>x.group_id);
-
- if(ids.length===0){
-  groups.innerHTML="No groups";
-  return;
- }
-
- const g=await sb.from("groups")
- .select("*")
- .in("id",ids);
-
- groups.innerHTML="";
-
- g.data.forEach(x=>{
-  groups.innerHTML += `
-  <div class="item">
-  <strong>${x.name}</strong><br>
-  Invite Code: ${x.invite_code}
-  </div>`;
- });
-}
-
-load();
-
-</script>
+ <script src="./app.js"></script>
 </body>
 </html>
