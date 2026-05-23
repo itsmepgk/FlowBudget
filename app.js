@@ -100,6 +100,9 @@ async function changeName(name) {
   if (error) { alert(error.message); return; }
   currentUser.name = name;
   currentUser.nameChanged = true;
+  // Keep groupMembers in sync so expense modals immediately reflect new name
+  const selfIdx = groupMembers.findIndex(m => m.user_uuid === currentUser.id);
+  if (selfIdx >= 0) groupMembers[selfIdx].name = name;
   document.getElementById('userAvatarBtn').textContent     = name[0].toUpperCase();
   document.getElementById('userMenuName').textContent      = name;
   document.getElementById('editNameMenuBtn').style.display = 'none';
@@ -246,6 +249,7 @@ async function openGroup(el) {
   document.getElementById('groupDetailName').textContent = el.dataset.name;
   document.getElementById('groupInviteCode').textContent = `Code: ${el.dataset.code}`;
 
+  closeUserMenu();
   subscribeToGroup(currentGroup.id);
   await loadGroupMembers(currentGroup.id);
   await loadGroupExpenses(currentGroup.id);
@@ -288,6 +292,7 @@ function unsubscribeFromGroup() {
 }
 
 function goBack() {
+  closeUserMenu();
   unsubscribeFromGroup();
   currentGroup = null;
   groupMembers = [];
@@ -455,10 +460,15 @@ async function submitExpense() {
   }
 
   if (editingExpenseId) {
-    const { error } = await sb.from('expenses')
+    const { data: updated, error } = await sb.from('expenses')
       .update({ description: desc, amount, category, paid_by: paidBy })
-      .eq('id', editingExpenseId);
+      .eq('id', editingExpenseId)
+      .select();
     if (error) { alert(error.message); return; }
+    if (!updated?.length) {
+      alert('Could not save changes — the expense update was blocked. Make sure Migration v5 has been run in your Supabase SQL Editor.');
+      return;
+    }
     await sb.from('expense_splits').delete().eq('expense_id', editingExpenseId);
     await sb.from('expense_splits').insert(splits.map(s => ({ expense_id: editingExpenseId, ...s })));
     await logEvent(`Updated "${desc}" · ${sym()}${amount.toFixed(2)}`, 'expense_updated');
@@ -500,7 +510,7 @@ async function loadGroupExpenses(groupId) {
       <div class="expense-right">
         <div class="expense-amount">${sym()}${parseFloat(e.amount).toFixed(2)}</div>
         ${canEdit ? `<button class="edit-btn" onclick="openEditExpense(${e.id})">✏️</button>` : ''}
-        ${canEdit ? `<button class="delete-btn" onclick="deleteExpense(${e.id}, ${JSON.stringify(e.description)})">🗑</button>` : ''}
+        ${canEdit ? `<button class="delete-btn" data-expid="${e.id}" data-desc="${esc(e.description)}" onclick="deleteExpense(+this.dataset.expid, this.dataset.desc)">🗑</button>` : ''}
       </div>
     </div>`;
   }).join('');
