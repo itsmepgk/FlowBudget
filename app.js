@@ -122,7 +122,7 @@ async function init() {
   const guestBanner     = document.getElementById('guestBanner');
 
   if (user) {
-    let { data } = await sb.from('users').select('name, name_changed').eq('id', user.id).single();
+    let { data } = await sb.from('users').select('name, name_changed').eq('id', user.id).maybeSingle();
     // If no users row exists (e.g. signup insert was blocked before email confirmation),
     // create it now so future updates work correctly.
     if (!data) {
