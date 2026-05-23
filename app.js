@@ -13,10 +13,29 @@ function sym() { return CURRENCIES[currentGroup?.currency] || '$'; }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
+function displayName(name, email) {
+  if (!name || name.includes('@')) return (email || '').split('@')[0] || 'User';
+  return name;
+}
+
+function setAuthTab(tab) {
+  const isSignup = tab === 'signup';
+  document.getElementById('signupOnlyFields').style.display  = isSignup ? 'block' : 'none';
+  document.getElementById('authActionBtn').textContent        = isSignup ? 'Sign Up' : 'Login';
+  document.getElementById('authActionBtn').onclick            = isSignup ? signup : login;
+  document.getElementById('password').autocomplete           = isSignup ? 'new-password' : 'current-password';
+  document.getElementById('tabLogin').classList.toggle('active',  !isSignup);
+  document.getElementById('tabSignup').classList.toggle('active',  isSignup);
+  document.getElementById('authStatus').textContent          = '';
+}
+
 function toggleAuthPanel() {
   const modal = document.getElementById('authModal');
   modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
-  if (modal.style.display === 'flex') document.getElementById('email').focus();
+  if (modal.style.display === 'flex') {
+    setAuthTab('login');
+    document.getElementById('email').focus();
+  }
 }
 
 async function signup() {
@@ -90,7 +109,7 @@ async function init() {
 
   if (user) {
     const { data } = await sb.from('users').select('name, name_changed').eq('id', user.id).single();
-    currentUser.name = data?.name || user.email;
+    currentUser.name = displayName(data?.name, user.email);
     currentUser.nameChanged = data?.name_changed || false;
     authBtn.style.display = 'none';
     userInfoEl.style.display = 'flex';
@@ -217,6 +236,7 @@ async function openGroup(el) {
   document.getElementById('groupInviteCode').textContent = `Code: ${el.dataset.code}`;
 
   subscribeToGroup(currentGroup.id);
+  document.getElementById('editNameBtn').style.display = 'none';
   await loadGroupMembers(currentGroup.id);
   await loadGroupExpenses(currentGroup.id);
   await Promise.all([loadBalances(currentGroup.id), loadActivity(currentGroup.id)]);
@@ -259,6 +279,7 @@ function unsubscribeFromGroup() {
 
 function goBack() {
   unsubscribeFromGroup();
+  if (currentUser && !currentUser.nameChanged) document.getElementById('editNameBtn').style.display = 'inline-flex';
   currentGroup = null;
   groupMembers = [];
   document.getElementById('groupDetail').style.display = 'none';
@@ -285,7 +306,7 @@ async function loadGroupMembers(groupId) {
   groupMembers = members.map(m => ({
     user_uuid:  m.user_uuid,
     user_email: m.user_email,
-    name: nameMap[m.user_uuid] || m.user_email
+    name: displayName(nameMap[m.user_uuid], m.user_email)
   }));
 
   document.getElementById('membersList').innerHTML = groupMembers.map(m => `

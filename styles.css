@@ -30,13 +30,16 @@ body {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  min-width: 0;
+  max-width: 55%;
 }
 .user-name-display {
   font-size: 14px;
   font-weight: 600;
   color: #94a3b8;
-  max-width: 120px;
+  flex: 1 1 auto;
+  min-width: 40px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -51,6 +54,7 @@ body {
   border: 1px solid #334155;
   border-radius: 6px;
   line-height: 1;
+  flex-shrink: 0;
 }
 .edit-name-btn:hover { background: #1e293b; color: #e2e8f0; }
 
@@ -81,6 +85,7 @@ button:hover { background: #1d4ed8; }
   padding: 8px 14px;
   margin: 0;
   background: #374151;
+  flex-shrink: 0;
 }
 .logout-btn:hover { background: #4b5563; }
 
@@ -101,6 +106,31 @@ select option { background: #1e293b; }
 .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .btn-row button { margin-top: 10px; }
 .field-label { display: block; font-size: 13px; color: #94a3b8; margin-top: 12px; }
+
+/* ── Auth Tabs ────────────────────────────────────── */
+.auth-tabs {
+  display: flex;
+  background: #0f172a;
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 4px;
+}
+.auth-tab {
+  flex: 1;
+  padding: 8px;
+  background: transparent;
+  color: #64748b;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  width: auto;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.auth-tab.active { background: #1e293b; color: #e2e8f0; }
+.auth-tab:hover:not(.active) { color: #94a3b8; }
 
 /* ── App Container ────────────────────────────────── */
 .app-container {
