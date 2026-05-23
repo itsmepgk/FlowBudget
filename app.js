@@ -7,6 +7,19 @@ const sb = window.supabase.createClient(
 
 console.log("Supabase client initialized");
 
+let currentUser = null;
+
+// Toggle auth panel (login modal)
+function toggleAuthPanel() {
+ const modal = document.getElementById('authModal');
+ if (modal.style.display === 'none' || !modal.style.display) {
+  modal.style.display = 'flex';
+  document.getElementById('email').focus();
+ } else {
+  modal.style.display = 'none';
+ }
+}
+
 function code(){
  return Math.random().toString(36).substring(2,8).toUpperCase();
 }
@@ -14,6 +27,11 @@ function code(){
 async function signup(){
 
  console.log("Signup clicked, email:", email.value);
+
+ if (!name.value.trim()) {
+  alert("Please enter your name");
+  return;
+ }
 
  const {error, data} = await sb.auth.signUp({
   email:email.value,
@@ -27,7 +45,23 @@ async function signup(){
   alert(error.message);
  } else {
   console.log("Signup successful!");
-  alert("Signup complete");
+  
+  // Store user name in users table
+  if (data.user) {
+   const {error: nameError} = await sb.from('users').insert([
+    {id: data.user.id, name: name.value}
+   ]);
+   if (nameError) {
+    console.error("Failed to save user name:", nameError);
+   } else {
+    console.log("User name saved successfully");
+   }
+  }
+  
+  alert("Signup complete! Please log in.");
+  email.value = '';
+  password.value = '';
+  name.value = '';
  }
 }
 
@@ -47,6 +81,10 @@ async function login(){
   alert(error.message);
  } else {
   console.log("Login successful!");
+  document.getElementById('authModal').style.display = 'none';
+  email.value = '';
+  password.value = '';
+  name.value = '';
  }
 
  load();
@@ -64,6 +102,32 @@ async function logout(){
  }
 
  location.reload();
+}
+
+// Update UI with user info
+async function updateUserUI() {
+ const user = (await sb.auth.getUser()).data.user;
+ const authBtn = document.getElementById('authBtn');
+ const userInfo = document.getElementById('userInfo');
+ const authModal = document.getElementById('authModal');
+ 
+ if (user) {
+  // Fetch user name
+  const {data, error} = await sb.from('users').select('name').eq('id', user.id).single();
+  
+  if (data) {
+   authBtn.style.display = 'none';
+   userInfo.style.display = 'block';
+   document.querySelector('.user-name').textContent = data.name;
+   document.querySelector('.user-email').textContent = user.email;
+   currentUser = {id: user.id, email: user.email, name: data.name};
+  }
+ } else {
+  authBtn.style.display = 'block';
+  userInfo.style.display = 'none';
+  authModal.style.display = 'none';
+  currentUser = null;
+ }
 }
 
 async function createGroup(){
@@ -170,7 +234,12 @@ async function load(){
   console.log("No user logged in");
  }
 
- status.innerText=user ? "Logged in: "+user.email : "Not logged in";
+ if (document.getElementById('status')) {
+  document.getElementById('status').innerText=user ? "Logged in: "+user.email : "Not logged in";
+ }
+ 
+ // Update user UI
+ await updateUserUI();
 
  if(!user) {
   console.log("Skipping group load - user not logged in");
@@ -218,5 +287,12 @@ async function load(){
   </div>`;
  });
 }
-
+// Close modal when clicking outside
+document.addEventListener('click', function(event) {
+ const modal = document.getElementById('authModal');
+ const authBtn = document.getElementById('authBtn');
+ if (modal && event.target === modal) {
+  modal.style.display = 'none';
+ }
+});
 load();

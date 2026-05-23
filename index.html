@@ -11,16 +11,36 @@
 </head>
 <body>
 
-<h1>� FlowBudget</h1>
+<!-- Top-right login button and user info -->
+<div class="header-top-right">
+ <button id="authBtn" class="auth-btn" onclick="toggleAuthPanel()">Login</button>
+ <div id="userInfo" class="user-info" style="display: none;">
+  <div class="user-name">User Name</div>
+  <div class="user-email">email@example.com</div>
+  <button class="logout-btn" onclick="logout()">Logout</button>
+ </div>
+</div>
+
+<h1>💰 FlowBudget</h1>
+
+<!-- Auth modal (hidden by default) -->
+<div id="authModal" class="auth-modal" style="display: none;">
+ <div class="modal-content">
+  <button class="close-btn" onclick="toggleAuthPanel()">✕</button>
+  <h2>Login / Signup</h2>
+  <input id="email" placeholder="Email">
+  <input id="name" placeholder="Full Name">
+  <input id="password" type="password" placeholder="Password">
+  <button onclick="signup()">Signup</button>
+  <button onclick="login()">Login</button>
+  <div id="status"></div>
+ </div>
+</div>
 
 <div class="card">
 <h3>Auth</h3>
-<input id="email" placeholder="Email">
-<input id="password" type="password" placeholder="Password">
-<button onclick="signup()">Signup</button>
-<button onclick="login()">Login</button>
-<button onclick="logout()">Logout</button>
-<div id="status"></div>
+<p>Use the login button in the top-right corner</p>
+<div id="status-alt"></div>
 </div>
 
 <div class="card">
