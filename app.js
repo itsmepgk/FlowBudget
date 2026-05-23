@@ -96,8 +96,10 @@ function promptNameChange() {
 }
 
 async function changeName(name) {
-  const { error } = await sb.from('users').update({ name, name_changed: true }).eq('id', currentUser.id);
-  if (error) { alert(error.message); return; }
+  // upsert handles the case where the users row was never created
+  const { error } = await sb.from('users')
+    .upsert({ id: currentUser.id, name, name_changed: true }, { onConflict: 'id' });
+  if (error) { alert('Could not save name: ' + error.message); return; }
   currentUser.name = name;
   currentUser.nameChanged = true;
   // Keep groupMembers in sync so expense modals immediately reflect new name
@@ -120,9 +122,16 @@ async function init() {
   const guestBanner     = document.getElementById('guestBanner');
 
   if (user) {
-    const { data } = await sb.from('users').select('name, name_changed').eq('id', user.id).single();
-    currentUser.name = displayName(data?.name, user.email);
-    currentUser.nameChanged = data?.name_changed || false;
+    let { data } = await sb.from('users').select('name, name_changed').eq('id', user.id).single();
+    // If no users row exists (e.g. signup insert was blocked before email confirmation),
+    // create it now so future updates work correctly.
+    if (!data) {
+      const fallbackName = user.email.split('@')[0];
+      await sb.from('users').upsert({ id: user.id, name: fallbackName, name_changed: false }, { onConflict: 'id' });
+      data = { name: fallbackName, name_changed: false };
+    }
+    currentUser.name = displayName(data.name, user.email);
+    currentUser.nameChanged = data.name_changed || false;
     authBtn.style.display = 'none';
     userInfoEl.style.display = 'block';
     document.getElementById('userAvatarBtn').textContent     = (currentUser.name || '?')[0].toUpperCase();
