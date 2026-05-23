@@ -15,10 +15,15 @@
   <div class="header-logo" onclick="goBack()">💰 FlowBudget</div>
   <div class="header-right">
     <button id="authBtn" class="auth-btn" onclick="toggleAuthPanel()">Login</button>
-    <div id="userInfo" style="display:none">
-      <span id="userNameDisplay" class="user-name-display"></span>
-      <button id="editNameBtn" class="edit-name-btn" onclick="promptNameChange()" title="Change name (one time only)" style="display:none">✏️</button>
-      <button class="logout-btn" onclick="logout()">Logout</button>
+    <div id="userInfo" style="display:none" class="user-info-wrap">
+      <button class="user-avatar-btn" id="userAvatarBtn" onclick="toggleUserMenu()">?</button>
+      <div id="userMenu" class="user-menu" style="display:none">
+        <div class="user-menu-name" id="userMenuName"></div>
+        <div class="user-menu-email" id="userMenuEmail"></div>
+        <div class="user-menu-divider"></div>
+        <button id="editNameMenuBtn" class="user-menu-action" onclick="closeUserMenu(); promptNameChange()" style="display:none">✏️ Rename</button>
+        <button class="user-menu-action user-menu-logout" onclick="logout()">Sign out</button>
+      </div>
     </div>
   </div>
 </header>

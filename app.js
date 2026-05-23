@@ -29,6 +29,14 @@ function setAuthTab(tab) {
   document.getElementById('authStatus').textContent          = '';
 }
 
+function toggleUserMenu() {
+  const m = document.getElementById('userMenu');
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+function closeUserMenu() {
+  document.getElementById('userMenu').style.display = 'none';
+}
+
 function toggleAuthPanel() {
   const modal = document.getElementById('authModal');
   modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
@@ -92,8 +100,9 @@ async function changeName(name) {
   if (error) { alert(error.message); return; }
   currentUser.name = name;
   currentUser.nameChanged = true;
-  document.getElementById('userNameDisplay').textContent = name;
-  document.getElementById('editNameBtn').style.display = 'none';
+  document.getElementById('userAvatarBtn').textContent     = name[0].toUpperCase();
+  document.getElementById('userMenuName').textContent      = name;
+  document.getElementById('editNameMenuBtn').style.display = 'none';
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -112,9 +121,11 @@ async function init() {
     currentUser.name = displayName(data?.name, user.email);
     currentUser.nameChanged = data?.name_changed || false;
     authBtn.style.display = 'none';
-    userInfoEl.style.display = 'flex';
-    document.getElementById('userNameDisplay').textContent = currentUser.name;
-    document.getElementById('editNameBtn').style.display = currentUser.nameChanged ? 'none' : 'inline-flex';
+    userInfoEl.style.display = 'block';
+    document.getElementById('userAvatarBtn').textContent     = (currentUser.name || '?')[0].toUpperCase();
+    document.getElementById('userMenuName').textContent      = currentUser.name;
+    document.getElementById('userMenuEmail').textContent     = user.email;
+    document.getElementById('editNameMenuBtn').style.display = currentUser.nameChanged ? 'none' : 'block';
     loggedInSection.style.display = 'block';
     guestBanner.style.display = 'none';
     await loadGroups();
@@ -236,7 +247,6 @@ async function openGroup(el) {
   document.getElementById('groupInviteCode').textContent = `Code: ${el.dataset.code}`;
 
   subscribeToGroup(currentGroup.id);
-  document.getElementById('editNameBtn').style.display = 'none';
   await loadGroupMembers(currentGroup.id);
   await loadGroupExpenses(currentGroup.id);
   await Promise.all([loadBalances(currentGroup.id), loadActivity(currentGroup.id)]);
@@ -279,7 +289,6 @@ function unsubscribeFromGroup() {
 
 function goBack() {
   unsubscribeFromGroup();
-  if (currentUser && !currentUser.nameChanged) document.getElementById('editNameBtn').style.display = 'inline-flex';
   currentGroup = null;
   groupMembers = [];
   document.getElementById('groupDetail').style.display = 'none';
@@ -306,7 +315,9 @@ async function loadGroupMembers(groupId) {
   groupMembers = members.map(m => ({
     user_uuid:  m.user_uuid,
     user_email: m.user_email,
-    name: displayName(nameMap[m.user_uuid], m.user_email)
+    name: m.user_uuid === currentUser?.id
+      ? currentUser.name
+      : displayName(nameMap[m.user_uuid], m.user_email)
   }));
 
   document.getElementById('membersList').innerHTML = groupMembers.map(m => `
@@ -676,6 +687,10 @@ function esc(str) {
 
 // Close modals when clicking the overlay backdrop
 document.addEventListener('click', e => {
+  // Close user menu when clicking outside
+  const userInfo = document.getElementById('userInfo');
+  if (userInfo && !userInfo.contains(e.target)) closeUserMenu();
+  // Close modals on backdrop click
   ['authModal', 'expenseModal', 'settleModal'].forEach(id => {
     const el = document.getElementById(id);
     if (e.target === el) el.style.display = 'none';

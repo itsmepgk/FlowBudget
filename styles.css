@@ -34,29 +34,63 @@ body {
   min-width: 0;
   max-width: 55%;
 }
-.user-name-display {
-  font-size: 14px;
-  font-weight: 600;
-  color: #94a3b8;
-  flex: 1 1 auto;
-  min-width: 40px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.edit-name-btn {
-  width: auto;
-  padding: 4px 7px;
+.user-name-display { display: none; } /* replaced by avatar menu */
+.edit-name-btn     { display: none; } /* replaced by avatar menu */
+
+/* ── User Avatar Menu ───────────────────────────── */
+.user-info-wrap { position: relative; }
+.user-avatar-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: white;
+  font-size: 15px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  padding: 0;
   margin: 0;
-  background: transparent;
-  color: #64748b;
-  font-size: 12px;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  transition: opacity 0.15s;
 }
-.edit-name-btn:hover { background: #1e293b; color: #e2e8f0; }
+.user-avatar-btn:hover { opacity: 0.8; background: linear-gradient(135deg, #2563eb, #7c3aed); }
+.user-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  padding: 16px;
+  min-width: 200px;
+  z-index: 300;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.user-menu-name  { font-size: 15px; font-weight: 700; color: #e2e8f0; }
+.user-menu-email { font-size: 12px; color: #64748b; margin-top: 3px; word-break: break-all; }
+.user-menu-divider { height: 1px; background: #334155; margin: 12px 0; }
+.user-menu-action {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  color: #94a3b8;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  margin-top: 2px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.user-menu-action:hover { background: #334155; color: #e2e8f0; }
+.user-menu-logout { color: #f87171; }
+.user-menu-logout:hover { background: rgba(248,113,113,0.1); color: #f87171; }
 
 /* ── Buttons & Inputs ─────────────────────────────── */
 button {
