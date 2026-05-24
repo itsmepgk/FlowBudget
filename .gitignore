@@ -1,1 +1,17 @@
+# Dependencies
+node_modules/
 
+# Build output (Netlify builds this from source)
+dist/
+
+# Environment variables — NEVER commit secrets
+.env
+.env.local
+.env.*.local
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+.vscode/
