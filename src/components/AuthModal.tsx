@@ -44,14 +44,12 @@ export default function AuthModal({ onClose, onSuccess }: Props) {
     if (!allRulesMet) { setStatus('Please meet all password requirements'); return }
     const { data, error } = await sb.auth.signUp({ email, password })
     if (error) { setStatus(error.message); return }
-    // Supabase returns identities: [] when the email is already registered
-    if (data.user?.identities?.length === 0) {
+    // Supabase returns null user or identities:[] when the email is already registered
+    if (!data.user || data.user.identities?.length === 0) {
       setStatus('An account with this email already exists. Try logging in instead.')
       return
     }
-    if (data.user) {
-      await sb.from('users').upsert([{ id: data.user.id, name }], { onConflict: 'id' })
-    }
+    await sb.from('users').upsert([{ id: data.user.id, name }], { onConflict: 'id' })
     setStatusOk(true)
     setStatus('Signup successful! Check your email to confirm, then log in.')
   }
